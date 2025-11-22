@@ -1,0 +1,152 @@
+sequenceDiagram
+    autonumber
+
+    participant Client as MCP Client
+    participant Server as MCP Server
+    participant LSP as gopls (LSP Server)
+    participant FS as File System
+
+    %% ============================================
+    %% MCP Lifecycle - Initialization
+    %% ============================================
+    Note over Client,Server: MCP Lifecycle - Initialization
+    Client->>Server: initialize (MCP)
+    activate Server
+    Server-->>Client: InitializeResult (capabilities)
+    deactivate Server
+    Client->>Server: initialized (notification)
+    Note over Server: MCP server ready
+
+    %% ============================================
+    %% LSP Lifecycle - Initialization
+    %% ============================================
+    Note over Server,LSP: LSP Lifecycle - Initialization
+    Server->>LSP: initialize (LSP)
+    activate LSP
+    LSP-->>Server: InitializeResult (capabilities)
+    deactivate LSP
+    Server->>LSP: initialized (notification)
+    Note over LSP: gopls ready
+
+    %% ============================================
+    %% Document Management
+    %% ============================================
+    Note over Client,LSP: Document Management
+    Client->>Server: Open Go File Request
+    activate Server
+    Server->>FS: Read file content
+    FS-->>Server: File content
+    Server->>LSP: textDocument/didOpen
+    Note over LSP: Parse & index document
+    LSP-->>Server: (no response)
+    Server-->>Client: Success
+    deactivate Server
+
+    opt User modifies document
+        Client->>Server: Document change notification
+        activate Server
+        Server->>LSP: textDocument/didChange
+        LSP-->>Server: (no response)
+        Server-->>Client: Acknowledged
+        deactivate Server
+    end
+
+    %% ============================================
+    %% Hover Flow - All Cases in Single Flow
+    %% ============================================
+    Note over Client,LSP: Hover Request Flow (All Cases)
+
+    Client->>Server: tools/call (go_hover)
+    activate Server
+    Note over Server: Validate request<br/>(file path, position)
+
+    alt Invalid Request (malformed position)
+        Server-->>Client: Error: Invalid position format
+    else Valid Request
+        Server->>LSP: textDocument/hover<br/>(uri, position)
+        activate LSP
+
+        alt LSP Timeout (>5s)
+            Note over Server: Wait for response<br/>(5s timeout)
+            Server-->>Client: Error: gopls timeout
+        else LSP Responds
+            Note over LSP: Analyze symbol at position
+
+            alt Case 1: Function Symbol
+                Note over LSP: Found function<br/>(signature + docs)
+                LSP-->>Server: Hover (function info)
+                Note over Server: Format function<br/>documentation
+                Server-->>Client: Success: Function docs<br/>(signature, comments)
+
+            else Case 2: Type Symbol (struct/interface)
+                Note over LSP: Found type<br/>(definition + docs)
+                LSP-->>Server: Hover (type info)
+                Note over Server: Format type<br/>documentation
+                Server-->>Client: Success: Type docs<br/>(definition, comments)
+
+            else Case 3: Constant/Variable Symbol
+                Note over LSP: Found const/var<br/>(type + docs)
+                LSP-->>Server: Hover (variable info)
+                Note over Server: Format variable<br/>documentation
+                Server-->>Client: Success: Variable docs<br/>(type, comments)
+
+            else Case 4: External Package Symbol
+                Note over LSP: Found external symbol<br/>(resolve from pkg)
+                LSP-->>Server: Hover (external info)
+                Note over Server: Format external<br/>documentation
+                Server-->>Client: Success: External docs<br/>(definition, comments)
+
+            else Case 5: Invalid Symbol (whitespace/comment/operator/keyword)
+                Note over LSP: No symbol found<br/>(invalid location)
+                LSP-->>Server: Hover (null/empty)
+                Server-->>Client: Info: No documentation<br/>available (invalid symbol)
+
+            else Case 6: Symbol Without Documentation
+                Note over LSP: Found symbol but<br/>no docs available
+                LSP-->>Server: Hover (no docs)
+                Server-->>Client: Info: No documentation<br/>available for symbol
+            end
+        end
+        deactivate LSP
+    end
+    deactivate Server
+
+    %% ============================================
+    %% Error Scenarios
+    %% ============================================
+    Note over Client,LSP: Error Scenarios
+
+    opt gopls Startup Failure
+        Client->>Server: go_hover request
+        activate Server
+        Server->>LSP: initialize (LSP)
+        LSP--xServer: Connection failed
+        Server-->>Client: Error: gopls startup failed
+        deactivate Server
+    end
+
+    opt Invalid File Path
+        Client->>Server: go_hover (invalid path)
+        activate Server
+        Server->>FS: Read file
+        FS--xServer: File not found
+        Server-->>Client: Error: Invalid file path
+        deactivate Server
+    end
+
+    %% ============================================
+    %% Logging & Observability
+    %% ============================================
+    Note over Server: Throughout all operations:<br/>- Log hover requests (file, position)<br/>- Log errors with details<br/>- Debug mode for verbose logging
+
+    %% ============================================
+    %% Shutdown
+    %% ============================================
+    Note over Client,LSP: Shutdown Sequence
+    Client->>Server: shutdown (MCP)
+    Server->>LSP: shutdown (LSP)
+    LSP-->>Server: null
+    Server-->>Client: null
+    Client->>Server: exit (notification)
+    Server->>LSP: exit (notification)
+    Note over Server,LSP: Servers terminated
