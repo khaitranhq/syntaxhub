@@ -12,8 +12,8 @@ const (
 )
 
 // GetGoModuleRootPath returns the root path of the current Go module
-func GetGoModuleRootPath() (string, error) {
-	goModPathBytes, err := exec.CommandContext(context.Background(), "go", "env", "GOMOD").Output()
+func GetGoModuleRootPath(ctx context.Context) (string, error) {
+	goModPathBytes, err := exec.CommandContext(ctx, "go", "env", "GOMOD").Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get Go module path: %w", err)
 	}

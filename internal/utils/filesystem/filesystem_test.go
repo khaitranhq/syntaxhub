@@ -11,8 +11,9 @@ import (
 //nolint:paralleltest
 func TestGetGoModuleRootPath(t *testing.T) {
 	t.Run("success - returns root path when in a Go module", func(t *testing.T) {
+		ctx := t.Context()
 		// This test assumes we're running within the syntaxhub Go module
-		rootPath, err := GetGoModuleRootPath()
+		rootPath, err := GetGoModuleRootPath(ctx)
 
 		// Should not return an error
 		if err != nil {
@@ -52,8 +53,10 @@ func TestGetGoModuleRootPath(t *testing.T) {
 
 		t.Chdir(tempDir)
 
+		ctx := t.Context()
+
 		// Call the function - should handle the case when GOMOD is empty
-		rootPath, err := GetGoModuleRootPath()
+		rootPath, err := GetGoModuleRootPath(ctx)
 
 		// When not in a Go module, `go env GOMOD` returns empty string or "/dev/null"
 		// The current implementation doesn't explicitly handle this case
